@@ -1,106 +1,67 @@
-"""
-Exceptions used by the Distutils modules.
+"""setuptools.errors
 
-Distutils modules may raise these or standard exceptions,
-including :exc:`SystemExit`.
+Provides exceptions used by setuptools modules.
 """
 
-# compiler exceptions re-exported for backward compatibility; listed in
-# __all__ below so they're recognized as intentional public re-exports.
-from .compilers.C.errors import CompileError, LibError, LinkError, PreprocessError
-from .compilers.errors import Error as _Error
-from .compilers.errors import UnknownFileType as _UnknownFileType
+from __future__ import annotations
 
-CCompilerError = _Error
-UnknownFileError = _UnknownFileType
+from distutils import errors as _distutils_errors
 
-__all__ = [
-    'CCompilerError',
-    'CompileError',
-    'DistutilsArgError',
-    'DistutilsByteCompileError',
-    'DistutilsClassError',
-    'DistutilsError',
-    'DistutilsExecError',
-    'DistutilsFileError',
-    'DistutilsGetoptError',
-    'DistutilsInternalError',
-    'DistutilsModuleError',
-    'DistutilsOptionError',
-    'DistutilsPlatformError',
-    'DistutilsSetupError',
-    'DistutilsTemplateError',
-    'LibError',
-    'LinkError',
-    'PreprocessError',
-    'UnknownFileError',
-]
+# Re-export errors from distutils to facilitate the migration to PEP632
+
+ByteCompileError = _distutils_errors.DistutilsByteCompileError
+CCompilerError = _distutils_errors.CCompilerError
+ClassError = _distutils_errors.DistutilsClassError
+CompileError = _distutils_errors.CompileError
+ExecError = _distutils_errors.DistutilsExecError
+FileError = _distutils_errors.DistutilsFileError
+InternalError = _distutils_errors.DistutilsInternalError
+LibError = _distutils_errors.LibError
+LinkError = _distutils_errors.LinkError
+ModuleError = _distutils_errors.DistutilsModuleError
+OptionError = _distutils_errors.DistutilsOptionError
+PlatformError = _distutils_errors.DistutilsPlatformError
+PreprocessError = _distutils_errors.PreprocessError
+SetupError = _distutils_errors.DistutilsSetupError
+TemplateError = _distutils_errors.DistutilsTemplateError
+UnknownFileError = _distutils_errors.UnknownFileError
+
+# The root error class in the hierarchy
+BaseError = _distutils_errors.DistutilsError
 
 
-class DistutilsError(Exception):
-    """The root of all Distutils evil."""
+class InvalidConfigError(OptionError):  # type: ignore[valid-type, misc] # distutils imports are `Any` on python 3.12+
+    """Error used for invalid configurations."""
 
 
-class DistutilsModuleError(DistutilsError):
-    """Unable to load an expected module, or to find an expected class
-    within some module (in particular, command modules and classes)."""
+class RemovedConfigError(OptionError):  # type: ignore[valid-type, misc] # distutils imports are `Any` on python 3.12+
+    """Error used for configurations that were deprecated and removed."""
 
 
-class DistutilsClassError(DistutilsError):
-    """Some command class (or possibly distribution class, if anyone
-    feels a need to subclass Distribution) is found not to be holding
-    up its end of the bargain, ie. implementing some part of the
-    "command "interface."""
+class RemovedCommandError(BaseError, RuntimeError):  # type: ignore[valid-type, misc] # distutils imports are `Any` on python 3.12+
+    """Error used for commands that have been removed in setuptools.
+
+    Since ``setuptools`` is built on ``distutils``, simply removing a command
+    from ``setuptools`` will make the behavior fall back to ``distutils``; this
+    error is raised if a command exists in ``distutils`` but has been actively
+    removed in ``setuptools``.
+    """
 
 
-class DistutilsGetoptError(DistutilsError):
-    """The option table provided to 'fancy_getopt()' is bogus."""
+class PackageDiscoveryError(BaseError, RuntimeError):  # type: ignore[valid-type, misc] # distutils imports are `Any` on python 3.12+
+    """Impossible to perform automatic discovery of packages and/or modules.
 
+    The current project layout or given discovery options can lead to problems when
+    scanning the project directory.
 
-class DistutilsArgError(DistutilsError):
-    """Raised by fancy_getopt in response to getopt.error -- ie. an
-    error in the command line usage."""
+    Setuptools might also refuse to complete auto-discovery if an error prone condition
+    is detected (e.g. when a project is organised as a flat-layout but contains
+    multiple directories that can be taken as top-level packages inside a single
+    distribution [*]_). In these situations the users are encouraged to be explicit
+    about which packages to include or to make the discovery parameters more specific.
 
-
-class DistutilsFileError(DistutilsError):
-    """Any problems in the filesystem: expected file not found, etc.
-    Typically this is for problems that we detect before OSError
-    could be raised."""
-
-
-class DistutilsOptionError(DistutilsError):
-    """Syntactic/semantic errors in command options, such as use of
-    mutually conflicting options, or inconsistent options,
-    badly-spelled values, etc.  No distinction is made between option
-    values originating in the setup script, the command line, config
-    files, or what-have-you -- but if we *know* something originated in
-    the setup script, we'll raise DistutilsSetupError instead."""
-
-
-class DistutilsSetupError(DistutilsError):
-    """For errors that can be definitely blamed on the setup script,
-    such as invalid keyword arguments to 'setup()'."""
-
-
-class DistutilsPlatformError(DistutilsError):
-    """We don't know how to do something on the current platform (but
-    we do know how to do it on some platform) -- eg. trying to compile
-    C files on a platform not supported by a CCompiler subclass."""
-
-
-class DistutilsExecError(DistutilsError):
-    """Any problems executing an external program (such as the C
-    compiler, when compiling C files)."""
-
-
-class DistutilsInternalError(DistutilsError):
-    """Internal inconsistencies or impossibilities (obviously, this
-    should never be seen if the code is working!)."""
-
-
-class DistutilsTemplateError(DistutilsError):
-    """Syntax error in a file list template."""
-
-
-class DistutilsByteCompileError(DistutilsError):
-    """Byte compile error."""
+    .. [*] Since multi-package distributions are uncommon it is very likely that the
+       developers did not intend for all the directories to be packaged, and are just
+       leaving auxiliary code in the repository top-level, such as maintenance-related
+       scripts.
+    """

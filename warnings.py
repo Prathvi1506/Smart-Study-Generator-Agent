@@ -1,130 +1,110 @@
-"""Pydantic-specific warnings."""
+"""Provide basic warnings used by setuptools modules.
 
-from __future__ import annotations as _annotations
+Using custom classes (other than ``UserWarning``) allow users to set
+``PYTHONWARNINGS`` filters to run tests and prepare for upcoming changes in
+setuptools.
+"""
 
-from .version import version_short
+from __future__ import annotations
 
-__all__ = (
-    'PydanticDeprecatedSince20',
-    'PydanticDeprecatedSince26',
-    'PydanticDeprecatedSince29',
-    'PydanticDeprecatedSince210',
-    'PydanticDeprecatedSince211',
-    'PydanticDeprecatedSince212',
-    'PydanticDeprecatedSince214',
-    'PydanticDeprecationWarning',
-    'PydanticExperimentalWarning',
-    'ArbitraryTypeWarning',
-    'UnsupportedFieldAttributeWarning',
-    'TypedDictExtraConfigWarning',
-)
+import os
+import warnings
+from datetime import date
+from inspect import cleandoc
+from textwrap import indent
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import TypeAlias
+
+_DueDate: TypeAlias = tuple[int, int, int]  # time tuple
+_INDENT = 8 * " "
+_TEMPLATE = f"""{80 * '*'}\n{{details}}\n{80 * '*'}"""
 
 
-class PydanticDeprecationWarning(DeprecationWarning):
-    """A Pydantic specific deprecation warning.
+class SetuptoolsWarning(UserWarning):
+    """Base class in ``setuptools`` warning hierarchy."""
 
-    This warning is raised when using deprecated functionality in Pydantic. It provides information on when the
-    deprecation was introduced and the expected version in which the corresponding functionality will be removed.
-
-    Attributes:
-        message: Description of the warning.
-        since: Pydantic version in what the deprecation was introduced.
-        expected_removal: Pydantic version in what the corresponding functionality expected to be removed.
-    """
-
-    message: str
-    since: tuple[int, int]
-    expected_removal: tuple[int, int]
-
-    def __init__(
-        self, message: str, *args: object, since: tuple[int, int], expected_removal: tuple[int, int] | None = None
+    @classmethod
+    def emit(
+        cls,
+        summary: str | None = None,
+        details: str | None = None,
+        due_date: _DueDate | None = None,
+        see_docs: str | None = None,
+        see_url: str | None = None,
+        stacklevel: int = 2,
+        **kwargs,
     ) -> None:
-        super().__init__(message, *args)
-        self.message = message.rstrip('.')
-        self.since = since
-        self.expected_removal = expected_removal if expected_removal is not None else (since[0] + 1, 0)
+        """Private: reserved for ``setuptools`` internal use only"""
+        # Default values:
+        summary_ = summary or getattr(cls, "_SUMMARY", None) or ""
+        details_ = details or getattr(cls, "_DETAILS", None) or ""
+        due_date = due_date or getattr(cls, "_DUE_DATE", None)
+        docs_ref = see_docs or getattr(cls, "_SEE_DOCS", None)
+        docs_url = docs_ref and f"https://setuptools.pypa.io/en/latest/{docs_ref}"
+        see_url = see_url or getattr(cls, "_SEE_URL", None)
+        due = date(*due_date) if due_date else None
 
-    def __str__(self) -> str:
-        message = (
-            f'{self.message}. Deprecated in Pydantic V{self.since[0]}.{self.since[1]}'
-            f' to be removed in V{self.expected_removal[0]}.{self.expected_removal[1]}.'
-        )
-        if self.since == (2, 0):
-            message += f' See Pydantic V2 Migration Guide at https://errors.pydantic.dev/{version_short()}/migration/'
-        return message
+        text = cls._format(summary_, details_, due, see_url or docs_url, kwargs)
+        if due and due < date.today() and _should_enforce():  # noqa: DTZ011 # local date intended for due-date comparison
+            raise cls(text)
+        warnings.warn(text, cls, stacklevel=stacklevel + 1)
 
-
-class PydanticDeprecatedSince20(PydanticDeprecationWarning):
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.0."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 0), expected_removal=(3, 0))
-
-
-class PydanticDeprecatedSince26(PydanticDeprecationWarning):  # pragma: no cover
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.6."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 6), expected_removal=(3, 0))
-
-
-class PydanticDeprecatedSince29(PydanticDeprecationWarning):
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.9."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 9), expected_removal=(3, 0))
-
-
-class PydanticDeprecatedSince210(PydanticDeprecationWarning):
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.10."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 10), expected_removal=(3, 0))
-
-
-class PydanticDeprecatedSince211(PydanticDeprecationWarning):
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.11."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 11), expected_removal=(3, 0))
-
-
-class PydanticDeprecatedSince212(PydanticDeprecationWarning):
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.12."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 12), expected_removal=(3, 0))
+    @classmethod
+    def _format(
+        cls,
+        summary: str,
+        details: str,
+        due_date: date | None = None,
+        see_url: str | None = None,
+        format_args: dict | None = None,
+    ) -> str:
+        """Private: reserved for ``setuptools`` internal use only"""
+        today = date.today()  # noqa: DTZ011 # local date intended for due-date comparison
+        summary = cleandoc(summary).format_map(format_args or {})
+        possible_parts = [
+            cleandoc(details).format_map(format_args or {}),
+            (
+                f"\nBy {due_date:%Y-%b-%d}, you need to update your project and remove "
+                "deprecated calls\nor your builds will no longer be supported."
+                if due_date and due_date > today
+                else None
+            ),
+            (
+                "\nThis deprecation is overdue, please update your project and remove "
+                "deprecated\ncalls to avoid build errors in the future."
+                if due_date and due_date < today
+                else None
+            ),
+            (f"\nSee {see_url} for details." if see_url else None),
+        ]
+        parts = [x for x in possible_parts if x]
+        if parts:
+            body = indent(_TEMPLATE.format(details="\n".join(parts)), _INDENT)
+            return f"{summary}\n!!\n\n{body}\n\n!!"
+        return summary
 
 
-class PydanticDeprecatedSince214(PydanticDeprecationWarning):
-    """A specific `PydanticDeprecationWarning` subclass defining functionality deprecated since Pydantic 2.14."""
+class InformationOnly(SetuptoolsWarning):
+    """Currently there is no clear way of displaying messages to the users
+    that use the setuptools backend directly via ``pip``.
+    The only thing that might work is a warning, although it is not the
+    most appropriate tool for the job...
 
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(message, *args, since=(2, 14), expected_removal=(3, 0))
-
-
-class GenericBeforeBaseModelWarning(Warning):
-    pass
-
-
-class PydanticExperimentalWarning(Warning):
-    """A Pydantic specific experimental functionality warning.
-
-    It is raised to warn users that the functionality may change or be removed in future versions of Pydantic.
+    See pypa/packaging-problems#558.
     """
 
 
-class CoreSchemaGenerationWarning(UserWarning):
-    """A warning raised during core schema generation."""
+class SetuptoolsDeprecationWarning(SetuptoolsWarning):
+    """
+    Base class for warning deprecations in ``setuptools``
+
+    This class is not derived from ``DeprecationWarning``, and as such is
+    visible by default.
+    """
 
 
-class ArbitraryTypeWarning(CoreSchemaGenerationWarning):
-    """A warning raised when Pydantic fails to generate a core schema for an arbitrary type."""
-
-
-class UnsupportedFieldAttributeWarning(CoreSchemaGenerationWarning):
-    """A warning raised when a `Field()` attribute isn't supported in the context it is used."""
-
-
-class TypedDictExtraConfigWarning(CoreSchemaGenerationWarning):
-    """A warning raised when the [`extra`][pydantic.ConfigDict.extra] configuration is incompatible with the `closed` or `extra_items` specification."""
+def _should_enforce():
+    enforce = os.getenv("SETUPTOOLS_ENFORCE_DEPRECATION", "false").lower()
+    return enforce in ("true", "on", "ok", "1")
